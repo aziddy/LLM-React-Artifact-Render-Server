@@ -46,3 +46,10 @@ coverage/
 
 # Optional
 *.pem
+
+# Next.js
+.next/
+
+# SQLite
+data/
+*.db
