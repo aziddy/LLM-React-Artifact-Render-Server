@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
@@ -10,6 +10,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [configured, setConfigured] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/auth")
+      .then((res) => res.json())
+      .then((data) => setConfigured(data.configured))
+      .catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,6 +76,22 @@ export default function LoginPage() {
             Sign in to manage your artifacts
           </p>
         </div>
+
+        {!configured && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-400"
+          >
+            <p className="font-medium">Environment not configured</p>
+            <p className="mt-1 text-amber-400/80">
+              Set <code className="font-mono">ADMIN_USERNAME</code>,{" "}
+              <code className="font-mono">ADMIN_PASSWORD</code>, and{" "}
+              <code className="font-mono">JWT_SECRET</code> environment
+              variables to enable login.
+            </p>
+          </motion.div>
+        )}
 
         <form
           onSubmit={handleSubmit}
