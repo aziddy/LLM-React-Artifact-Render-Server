@@ -1,20 +1,27 @@
 import { Suspense } from "react";
-import { listArtifacts } from "@/lib/artifacts";
+import { listArtifactsWithTags } from "@/lib/artifacts";
+import { getTagTreeWithCounts } from "@/lib/tags";
 import { Navbar } from "@/components/Navbar";
 import { ArtifactGallery } from "@/components/ArtifactGallery";
 import { SearchBar } from "@/components/SearchBar";
+import { TagFilter } from "@/components/TagFilter";
 import Link from "next/link";
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string }>;
+  searchParams: Promise<{ search?: string; tag?: string }>;
 }) {
-  const { search } = await searchParams;
-  const artifacts = listArtifacts({
+  const { search, tag } = await searchParams;
+  const tagId = tag ? Number(tag) : undefined;
+
+  const artifacts = listArtifactsWithTags({
     includePrivate: true,
     search,
+    tagId,
   });
+
+  const allTags = getTagTreeWithCounts();
 
   return (
     <div className="min-h-screen">
@@ -49,10 +56,15 @@ export default async function DashboardPage({
           </Link>
         </div>
 
-        <div className="mb-6">
+        <div className="mb-6 flex flex-col gap-4">
           <Suspense>
             <SearchBar />
           </Suspense>
+          {allTags.length > 0 && (
+            <Suspense>
+              <TagFilter tags={allTags} activeTagId={tagId} />
+            </Suspense>
+          )}
         </div>
 
         <ArtifactGallery artifacts={artifacts} />

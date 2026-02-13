@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { getArtifactBySlug } from "@/lib/artifacts";
+import { getTagsForArtifact } from "@/lib/tags";
 
 export async function GET(
   _request: NextRequest,
@@ -20,5 +21,6 @@ export async function GET(
     }
   }
 
-  return NextResponse.json(artifact);
+  const tags = getTagsForArtifact(artifact.id);
+  return NextResponse.json({ ...artifact, tags });
 }

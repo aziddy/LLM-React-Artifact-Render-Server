@@ -2,12 +2,12 @@
 
 import { motion } from "framer-motion";
 import { ArtifactCard } from "./ArtifactCard";
-import type { ArtifactListItem } from "@/lib/artifacts";
+import type { ArtifactListItemWithTags } from "@/lib/artifacts";
 
 export function ArtifactGallery({
   artifacts,
 }: {
-  artifacts: ArtifactListItem[];
+  artifacts: ArtifactListItemWithTags[];
 }) {
   if (artifacts.length === 0) {
     return (

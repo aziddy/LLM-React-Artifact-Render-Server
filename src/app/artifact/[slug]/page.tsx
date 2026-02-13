@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getArtifactBySlug } from "@/lib/artifacts";
+import { getTagsForArtifact } from "@/lib/tags";
 import { isAuthenticated } from "@/lib/auth";
 import { ArtifactView } from "./ArtifactView";
 
@@ -21,5 +22,6 @@ export default async function ArtifactPage({
     notFound();
   }
 
-  return <ArtifactView artifact={artifact} isLoggedIn={authed} />;
+  const tags = getTagsForArtifact(artifact.id);
+  return <ArtifactView artifact={{ ...artifact, tags }} isLoggedIn={authed} />;
 }

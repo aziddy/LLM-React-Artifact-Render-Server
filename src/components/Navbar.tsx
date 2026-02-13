@@ -43,6 +43,12 @@ export function Navbar({ isLoggedIn }: { isLoggedIn: boolean }) {
                 Gallery
               </Link>
               <Link
+                href="/tags"
+                className="text-sm text-text-secondary transition-colors hover:text-text-primary"
+              >
+                Tags
+              </Link>
+              <Link
                 href="/upload"
                 className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
               >

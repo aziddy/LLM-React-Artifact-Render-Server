@@ -5,6 +5,7 @@ import {
   updateArtifact,
   deleteArtifact,
 } from "@/lib/artifacts";
+import { getTagsForArtifact } from "@/lib/tags";
 
 export async function GET(
   _request: NextRequest,
@@ -24,7 +25,8 @@ export async function GET(
     }
   }
 
-  return NextResponse.json(artifact);
+  const tags = getTagsForArtifact(Number(id));
+  return NextResponse.json({ ...artifact, tags });
 }
 
 export async function PUT(
@@ -44,7 +46,7 @@ export async function PUT(
 
   try {
     const body = await request.json();
-    const { title, description, code, visibility } = body;
+    const { title, description, code, visibility, tagIds } = body;
 
     if (visibility && !["public", "private"].includes(visibility)) {
       return NextResponse.json(
@@ -58,6 +60,7 @@ export async function PUT(
       description,
       code,
       visibility,
+      tagIds: Array.isArray(tagIds) ? tagIds.map(Number) : undefined,
     });
 
     return NextResponse.json(updated);

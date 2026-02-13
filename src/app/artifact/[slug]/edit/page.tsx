@@ -6,7 +6,9 @@ import { motion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { CodeEditor } from "@/components/CodeEditor";
 import { VisibilityToggle } from "@/components/VisibilityToggle";
+import { TagPicker } from "@/components/TagPicker";
 import type { Artifact } from "@/lib/artifacts";
+import type { Tag } from "@/lib/tags";
 
 export default function EditArtifactPage() {
   const router = useRouter();
@@ -18,6 +20,7 @@ export default function EditArtifactPage() {
   const [description, setDescription] = useState("");
   const [code, setCode] = useState("");
   const [visibility, setVisibility] = useState<"public" | "private">("private");
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -28,12 +31,15 @@ export default function EditArtifactPage() {
         if (!res.ok) throw new Error("Not found");
         return res.json();
       })
-      .then((data: Artifact) => {
+      .then((data: Artifact & { tags?: Tag[] }) => {
         setArtifact(data);
         setTitle(data.title);
         setDescription(data.description);
         setCode(data.code);
         setVisibility(data.visibility);
+        if (data.tags) {
+          setSelectedTagIds(data.tags.map((t) => t.id));
+        }
         setFetching(false);
       })
       .catch(() => {
@@ -60,7 +66,7 @@ export default function EditArtifactPage() {
       const res = await fetch(`/api/artifacts/${artifact!.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, code, visibility }),
+        body: JSON.stringify({ title, description, code, visibility, tagIds: selectedTagIds }),
       });
 
       if (!res.ok) {
@@ -136,6 +142,17 @@ export default function EditArtifactPage() {
                 Visibility
               </label>
               <VisibilityToggle value={visibility} onChange={setVisibility} />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+                Tags{" "}
+                <span className="text-text-muted">(optional)</span>
+              </label>
+              <TagPicker
+                selectedTagIds={selectedTagIds}
+                onChange={setSelectedTagIds}
+              />
             </div>
 
             <div>

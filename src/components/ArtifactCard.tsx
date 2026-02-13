@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { VisibilityBadge } from "./VisibilityBadge";
-import type { ArtifactListItem } from "@/lib/artifacts";
+import { TagBadge } from "./TagBadge";
+import type { ArtifactListItemWithTags } from "@/lib/artifacts";
 
 function timeAgo(dateStr: string): string {
   const date = new Date(dateStr + "Z");
@@ -26,7 +27,7 @@ export function ArtifactCard({
   artifact,
   index,
 }: {
-  artifact: ArtifactListItem;
+  artifact: ArtifactListItemWithTags;
   index: number;
 }) {
   return (
@@ -52,6 +53,14 @@ export function ArtifactCard({
           <p className="mb-4 text-sm text-text-secondary line-clamp-2">
             {artifact.description}
           </p>
+        )}
+
+        {artifact.tags && artifact.tags.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {artifact.tags.map((tag) => (
+              <TagBadge key={tag.id} tag={tag} />
+            ))}
+          </div>
         )}
 
         <div className="flex items-center gap-2 text-xs text-text-muted">

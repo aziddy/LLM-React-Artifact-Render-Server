@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { CodeEditor } from "@/components/CodeEditor";
 import { VisibilityToggle } from "@/components/VisibilityToggle";
+import { TagPicker } from "@/components/TagPicker";
 
 export default function UploadPage() {
   const router = useRouter();
@@ -13,6 +14,7 @@ export default function UploadPage() {
   const [description, setDescription] = useState("");
   const [code, setCode] = useState("");
   const [visibility, setVisibility] = useState<"public" | "private">("private");
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +37,7 @@ export default function UploadPage() {
       const res = await fetch("/api/artifacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, code, visibility }),
+        body: JSON.stringify({ title, description, code, visibility, tagIds: selectedTagIds }),
       });
 
       if (!res.ok) {
@@ -103,6 +105,17 @@ export default function UploadPage() {
                 Visibility
               </label>
               <VisibilityToggle value={visibility} onChange={setVisibility} />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+                Tags{" "}
+                <span className="text-text-muted">(optional)</span>
+              </label>
+              <TagPicker
+                selectedTagIds={selectedTagIds}
+                onChange={setSelectedTagIds}
+              />
             </div>
 
             <div>

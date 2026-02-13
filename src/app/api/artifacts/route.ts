@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
-import { createArtifact, listArtifacts } from "@/lib/artifacts";
+import { createArtifact, listArtifactsWithTags } from "@/lib/artifacts";
 
 export async function GET(request: NextRequest) {
   const authed = await isAuthenticated();
   const search = request.nextUrl.searchParams.get("search") || undefined;
+  const tagParam = request.nextUrl.searchParams.get("tag");
+  const tagId = tagParam ? Number(tagParam) : undefined;
 
-  const artifacts = listArtifacts({
+  const artifacts = listArtifactsWithTags({
     includePrivate: authed,
     search,
+    tagId,
   });
 
   return NextResponse.json(artifacts);
@@ -22,7 +25,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { title, description, code, visibility } = body;
+    const { title, description, code, visibility, tagIds } = body;
 
     if (!title || !code) {
       return NextResponse.json(
@@ -43,6 +46,7 @@ export async function POST(request: NextRequest) {
       description: description || "",
       code,
       visibility: visibility || "private",
+      tagIds: Array.isArray(tagIds) ? tagIds.map(Number) : undefined,
     });
 
     return NextResponse.json(artifact, { status: 201 });

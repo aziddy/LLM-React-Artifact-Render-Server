@@ -8,13 +8,15 @@ import { Navbar } from "@/components/Navbar";
 import { VisibilityBadge } from "@/components/VisibilityBadge";
 import { IframePreview } from "@/components/IframePreview";
 import { CodeEditor } from "@/components/CodeEditor";
+import { TagBadge } from "@/components/TagBadge";
 import type { Artifact } from "@/lib/artifacts";
+import type { Tag } from "@/lib/tags";
 
 export function ArtifactView({
   artifact,
   isLoggedIn,
 }: {
-  artifact: Artifact;
+  artifact: Artifact & { tags?: Tag[] };
   isLoggedIn: boolean;
 }) {
   const router = useRouter();
@@ -82,6 +84,13 @@ export function ArtifactView({
                   <p className="mt-1 text-text-secondary">
                     {artifact.description}
                   </p>
+                )}
+                {artifact.tags && artifact.tags.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {artifact.tags.map((tag) => (
+                      <TagBadge key={tag.id} tag={tag} />
+                    ))}
+                  </div>
                 )}
                 <div className="mt-3 flex items-center gap-3">
                   <VisibilityBadge visibility={artifact.visibility} />
