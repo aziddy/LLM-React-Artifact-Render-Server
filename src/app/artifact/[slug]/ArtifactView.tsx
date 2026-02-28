@@ -9,6 +9,7 @@ import { VisibilityBadge } from "@/components/VisibilityBadge";
 import { IframePreview } from "@/components/IframePreview";
 import { CodeEditor } from "@/components/CodeEditor";
 import { TagBadge } from "@/components/TagBadge";
+import { VersionPanel } from "@/components/VersionPanel";
 import type { Artifact } from "@/lib/artifacts";
 import type { Tag } from "@/lib/tags";
 
@@ -23,6 +24,7 @@ export function ArtifactView({
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [previewKey, setPreviewKey] = useState(0);
 
   async function handleDelete() {
     if (!confirm("Are you sure you want to delete this artifact?")) return;
@@ -111,7 +113,11 @@ export function ArtifactView({
               {isLoggedIn && (
                 <div className="flex items-center gap-2">
                   <Link
-                    href={`/artifact/${artifact.slug}/edit`}
+                    href={
+                      artifact.live_version > 0
+                        ? `/artifact/${artifact.slug}/edit?v=${artifact.live_version}`
+                        : `/artifact/${artifact.slug}/edit`
+                    }
                     className="rounded-lg border border-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-border-hover hover:text-text-primary"
                   >
                     Edit
@@ -155,8 +161,18 @@ export function ArtifactView({
                 </svg>
               </a>
             </div>
-            <IframePreview slug={artifact.slug} />
+            <IframePreview key={previewKey} slug={artifact.slug} />
           </div>
+
+          {/* Versions */}
+          {isLoggedIn && (
+            <VersionPanel
+              artifactId={artifact.id}
+              artifactSlug={artifact.slug}
+              liveVersion={artifact.live_version}
+              onLiveVersionChange={() => setPreviewKey((k) => k + 1)}
+            />
+          )}
 
           {/* Code section */}
           <div>

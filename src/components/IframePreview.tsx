@@ -2,8 +2,15 @@
 
 import { useState } from "react";
 
-export function IframePreview({ slug }: { slug: string }) {
+export function IframePreview({
+  slug,
+  src,
+}: {
+  slug?: string;
+  src?: string;
+}) {
   const [loading, setLoading] = useState(true);
+  const iframeSrc = src || `/render/${slug}`;
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-white">
@@ -13,7 +20,7 @@ export function IframePreview({ slug }: { slug: string }) {
         </div>
       )}
       <iframe
-        src={`/render/${slug}`}
+        src={iframeSrc}
         sandbox="allow-scripts"
         className="h-[600px] w-full"
         onLoad={() => setLoading(false)}

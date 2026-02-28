@@ -58,7 +58,45 @@ function initializeSchema(db: Database.Database) {
       FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_artifact_tags_tag_id ON artifact_tags(tag_id);
+
+    CREATE TABLE IF NOT EXISTS artifact_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      artifact_id INTEGER NOT NULL,
+      version_number INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      code TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(artifact_id, version_number),
+      FOREIGN KEY (artifact_id) REFERENCES artifacts(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_artifact_versions_artifact_id ON artifact_versions(artifact_id);
+    CREATE INDEX IF NOT EXISTS idx_artifact_versions_lookup ON artifact_versions(artifact_id, version_number);
   `);
+
+  // Migration: add live_version column to artifacts (idempotent)
+  try {
+    db.exec(`ALTER TABLE artifacts ADD COLUMN live_version INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // Column already exists
+  }
+
+  // Migration: backfill v1 for any artifact missing versions
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO artifact_versions (artifact_id, version_number, title, description, code, created_at)
+       SELECT a.id, 1, a.title, a.description, a.code, a.created_at
+       FROM artifacts a
+       LEFT JOIN artifact_versions v ON v.artifact_id = a.id
+       WHERE v.id IS NULL`
+    ).run();
+
+    db.prepare(
+      `UPDATE artifacts SET live_version = 1
+       WHERE live_version = 0
+         AND id IN (SELECT DISTINCT artifact_id FROM artifact_versions)`
+    ).run();
+  })();
 }
 
 export const db = getDb();

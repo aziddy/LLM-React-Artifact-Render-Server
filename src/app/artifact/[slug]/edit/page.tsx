@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Navbar } from "@/components/Navbar";
 import { CodeEditor } from "@/components/CodeEditor";
@@ -13,39 +13,63 @@ import type { Tag } from "@/lib/tags";
 export default function EditArtifactPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const slug = params.slug as string;
+  const versionParam = searchParams.get("v");
+  const editingVersion = versionParam ? Number(versionParam) : null;
 
   const [artifact, setArtifact] = useState<Artifact | null>(null);
+  const [isLiveVersion, setIsLiveVersion] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [code, setCode] = useState("");
-  const [visibility, setVisibility] = useState<"public" | "private">("private");
+  const [visibility, setVisibility] = useState<"public" | "private">(
+    "private"
+  );
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
+    // Always fetch the artifact first (for id, slug, visibility, tags, live_version)
     fetch(`/api/artifacts/by-slug/${slug}`)
       .then((res) => {
         if (!res.ok) throw new Error("Not found");
         return res.json();
       })
-      .then((data: Artifact & { tags?: Tag[] }) => {
+      .then(async (data: Artifact & { tags?: Tag[] }) => {
         setArtifact(data);
-        setTitle(data.title);
-        setDescription(data.description);
-        setCode(data.code);
         setVisibility(data.visibility);
         if (data.tags) {
           setSelectedTagIds(data.tags.map((t) => t.id));
         }
+
+        if (editingVersion) {
+          // Loading a specific version's content
+          setIsLiveVersion(data.live_version === editingVersion);
+          const vRes = await fetch(
+            `/api/artifacts/${data.id}/versions/${editingVersion}`
+          );
+          if (!vRes.ok) throw new Error("Version not found");
+          const vData = await vRes.json();
+          setTitle(vData.title);
+          setDescription(vData.description);
+          setCode(vData.code);
+        } else {
+          // Editing artifact directly
+          setIsLiveVersion(false);
+          setTitle(data.title);
+          setDescription(data.description);
+          setCode(data.code);
+        }
+
         setFetching(false);
       })
       .catch(() => {
         router.push("/");
       });
-  }, [slug, router]);
+  }, [slug, editingVersion, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -63,15 +87,36 @@ export default function EditArtifactPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`/api/artifacts/${artifact!.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, code, visibility, tagIds: selectedTagIds }),
-      });
+      let res: Response;
+
+      if (editingVersion) {
+        // Save to the specific version
+        res = await fetch(
+          `/api/artifacts/${artifact!.id}/versions/${editingVersion}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title, description, code }),
+          }
+        );
+      } else {
+        // Save to artifact directly
+        res = await fetch(`/api/artifacts/${artifact!.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            description,
+            code,
+            visibility,
+            tagIds: selectedTagIds,
+          }),
+        });
+      }
 
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error || "Failed to update artifact");
+        setError(data.error || "Failed to save");
         setLoading(false);
         return;
       }
@@ -104,11 +149,30 @@ export default function EditArtifactPage() {
           transition={{ duration: 0.4 }}
         >
           <h1 className="mb-2 text-2xl font-bold text-text-primary">
-            Edit Artifact
+            {editingVersion ? "Edit Version" : "Edit Artifact"}
           </h1>
-          <p className="mb-8 text-sm text-text-secondary">
-            Update your React/JSX artifact
-          </p>
+
+          {editingVersion ? (
+            <div className="mb-8 flex items-center gap-2">
+              <span className="rounded-md bg-surface px-2 py-0.5 text-xs font-mono text-text-secondary border border-border">
+                v{editingVersion}
+              </span>
+              {isLiveVersion && (
+                <span className="rounded-full bg-success/20 px-2.5 py-0.5 text-xs font-medium text-success">
+                  LIVE
+                </span>
+              )}
+              <span className="text-sm text-text-muted">
+                {isLiveVersion
+                  ? "Changes will update the live artifact"
+                  : "Changes won't affect the live artifact"}
+              </span>
+            </div>
+          ) : (
+            <p className="mb-8 text-sm text-text-secondary">
+              Update your React/JSX artifact
+            </p>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
@@ -137,23 +201,31 @@ export default function EditArtifactPage() {
               />
             </div>
 
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-text-secondary">
-                Visibility
-              </label>
-              <VisibilityToggle value={visibility} onChange={setVisibility} />
-            </div>
+            {/* Visibility and Tags only shown when editing artifact directly */}
+            {!editingVersion && (
+              <>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+                    Visibility
+                  </label>
+                  <VisibilityToggle
+                    value={visibility}
+                    onChange={setVisibility}
+                  />
+                </div>
 
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-text-secondary">
-                Tags{" "}
-                <span className="text-text-muted">(optional)</span>
-              </label>
-              <TagPicker
-                selectedTagIds={selectedTagIds}
-                onChange={setSelectedTagIds}
-              />
-            </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+                    Tags{" "}
+                    <span className="text-text-muted">(optional)</span>
+                  </label>
+                  <TagPicker
+                    selectedTagIds={selectedTagIds}
+                    onChange={setSelectedTagIds}
+                  />
+                </div>
+              </>
+            )}
 
             <div>
               <label className="mb-1.5 block text-sm font-medium text-text-secondary">

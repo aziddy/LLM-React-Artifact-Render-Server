@@ -9,11 +9,14 @@ export interface Artifact {
   description: string;
   code: string;
   visibility: "public" | "private";
+  live_version: number;
   created_at: string;
   updated_at: string;
 }
 
-export type ArtifactListItem = Omit<Artifact, "code">;
+export type ArtifactListItem = Omit<Artifact, "code"> & {
+  version_count: number;
+};
 
 export type ArtifactListItemWithTags = ArtifactListItem & { tags: Tag[] };
 
@@ -27,18 +30,26 @@ export interface CreateArtifactInput {
 
 export function createArtifact(input: CreateArtifactInput): Artifact {
   const slug = nanoid(10);
+  const desc = input.description || "";
   const stmt = db.prepare(`
-    INSERT INTO artifacts (slug, title, description, code, visibility)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO artifacts (slug, title, description, code, visibility, live_version)
+    VALUES (?, ?, ?, ?, ?, 1)
   `);
   const result = stmt.run(
     slug,
     input.title,
-    input.description || "",
+    desc,
     input.code,
     input.visibility
   );
   const id = result.lastInsertRowid as number;
+
+  // Create v1 and set it as live
+  db.prepare(
+    `INSERT INTO artifact_versions (artifact_id, version_number, title, description, code)
+     VALUES (?, 1, ?, ?, ?)`
+  ).run(id, input.title, desc, input.code);
+
   if (input.tagIds?.length) {
     setArtifactTags(id, input.tagIds);
   }
@@ -60,7 +71,7 @@ export function listArtifacts(opts: {
   search?: string;
 }): ArtifactListItem[] {
   let query =
-    "SELECT id, slug, title, description, visibility, created_at, updated_at FROM artifacts";
+    "SELECT id, slug, title, description, visibility, live_version, created_at, updated_at, (SELECT COUNT(*) FROM artifact_versions WHERE artifact_id = artifacts.id) as version_count FROM artifacts";
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -136,7 +147,7 @@ export function listArtifactsWithTags(opts: {
   tagId?: number;
 }): ArtifactListItemWithTags[] {
   let query =
-    "SELECT a.id, a.slug, a.title, a.description, a.visibility, a.created_at, a.updated_at FROM artifacts a";
+    "SELECT a.id, a.slug, a.title, a.description, a.visibility, a.live_version, a.created_at, a.updated_at, (SELECT COUNT(*) FROM artifact_versions WHERE artifact_id = a.id) as version_count FROM artifacts a";
   const conditions: string[] = [];
   const params: unknown[] = [];
 

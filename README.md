@@ -57,3 +57,9 @@ This builds the app, exposes port 3000, and persists the SQLite database in a na
 | DELETE | `/api/artifacts/[id]` | Required | Delete artifact |
 | GET | `/api/artifacts/by-slug/[slug]` | Optional | Get artifact by slug |
 | GET | `/render/[slug]` | Optional | Render artifact as HTML |
+
+## DB Migration 
+```bash
+just run npm run dev
+```
+

@@ -78,6 +78,20 @@ export function ArtifactCard({
             <polyline points="12 6 12 12 16 14" />
           </svg>
           {timeAgo(artifact.created_at)}
+          {artifact.version_count > 0 && (
+            <>
+              <span className="text-text-muted/40">·</span>
+              <span>
+                {artifact.version_count} {artifact.version_count === 1 ? "version" : "versions"}
+              </span>
+              {artifact.live_version > 0 && (
+                <>
+                  <span className="text-text-muted/40">·</span>
+                  <span>v{artifact.live_version} live</span>
+                </>
+              )}
+            </>
+          )}
         </div>
       </Link>
     </motion.div>
