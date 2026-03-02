@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
+ENV DATABASE_URL="file:./prisma/artifacts.db"
 RUN npm ci
 
 FROM node:20-alpine AS builder
