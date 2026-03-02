@@ -17,6 +17,7 @@ export default function EditArtifactPage() {
   const slug = params.slug as string;
   const versionParam = searchParams.get("v");
   const editingVersion = versionParam ? Number(versionParam) : null;
+  const isNewVersion = searchParams.get("new") === "true";
 
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [isLiveVersion, setIsLiveVersion] = useState(false);
@@ -89,7 +90,17 @@ export default function EditArtifactPage() {
     try {
       let res: Response;
 
-      if (editingVersion) {
+      if (isNewVersion) {
+        // Create a new version
+        res = await fetch(
+          `/api/artifacts/${artifact!.id}/versions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title, description, code }),
+          }
+        );
+      } else if (editingVersion) {
         // Save to the specific version
         res = await fetch(
           `/api/artifacts/${artifact!.id}/versions/${editingVersion}`,
@@ -149,10 +160,18 @@ export default function EditArtifactPage() {
           transition={{ duration: 0.4 }}
         >
           <h1 className="mb-2 text-2xl font-bold text-text-primary">
-            {editingVersion ? "Edit Version" : "Edit Artifact"}
+            {isNewVersion
+              ? "New Version"
+              : editingVersion
+                ? "Edit Version"
+                : "Edit Artifact"}
           </h1>
 
-          {editingVersion ? (
+          {isNewVersion ? (
+            <p className="mb-8 text-sm text-text-secondary">
+              Create a new version of this artifact
+            </p>
+          ) : editingVersion ? (
             <div className="mb-8 flex items-center gap-2">
               <span className="rounded-md bg-surface px-2 py-0.5 text-xs font-mono text-text-secondary border border-border">
                 v{editingVersion}
@@ -202,7 +221,7 @@ export default function EditArtifactPage() {
             </div>
 
             {/* Visibility and Tags only shown when editing artifact directly */}
-            {!editingVersion && (
+            {!editingVersion && !isNewVersion && (
               <>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-text-secondary">
@@ -250,7 +269,11 @@ export default function EditArtifactPage() {
                 disabled={loading}
                 className="rounded-lg bg-accent px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
               >
-                {loading ? "Saving..." : "Save Changes"}
+                {loading
+                  ? "Saving..."
+                  : isNewVersion
+                    ? "Create Version"
+                    : "Save Changes"}
               </button>
               <button
                 type="button"

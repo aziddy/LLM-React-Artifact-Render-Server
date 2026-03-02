@@ -50,7 +50,6 @@ export function VersionPanel({
   const [loading, setLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
   const [settingLive, setSettingLive] = useState<number | null>(null);
-  const [creatingVersion, setCreatingVersion] = useState(false);
 
   // Preview state
   const [previewVersion, setPreviewVersion] = useState<number | null>(null);
@@ -92,24 +91,8 @@ export function VersionPanel({
     }
   }, [expanded, fetched, fetchVersions]);
 
-  async function handleNewVersion() {
-    setCreatingVersion(true);
-    try {
-      const res = await fetch(`/api/artifacts/${artifactId}/versions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (res.ok) {
-        const version = await res.json();
-        await fetchVersions();
-        router.push(
-          `/artifact/${artifactSlug}/edit?v=${version.version_number}`
-        );
-      }
-    } finally {
-      setCreatingVersion(false);
-    }
+  function handleNewVersion() {
+    router.push(`/artifact/${artifactSlug}/edit?new=true`);
   }
 
   async function handleSetLive(versionNumber: number) {
@@ -217,10 +200,9 @@ export function VersionPanel({
         {expanded && (
           <button
             onClick={handleNewVersion}
-            disabled={creatingVersion}
-            className="rounded-lg border border-dashed border-border px-3 py-1.5 text-xs text-text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+            className="rounded-lg border border-dashed border-border px-3 py-1.5 text-xs text-text-muted transition-colors hover:border-accent hover:text-accent"
           >
-            {creatingVersion ? "Creating..." : "+ New Version"}
+            + New Version
           </button>
         )}
       </div>
@@ -246,12 +228,9 @@ export function VersionPanel({
                   </p>
                   <button
                     onClick={handleNewVersion}
-                    disabled={creatingVersion}
-                    className="rounded-lg bg-accent px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+                    className="rounded-lg bg-accent px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
                   >
-                    {creatingVersion
-                      ? "Creating..."
-                      : "Create First Version"}
+                    Create First Version
                   </button>
                 </div>
               ) : (
