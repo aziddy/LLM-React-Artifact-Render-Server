@@ -1,59 +1,57 @@
-import Database from "better-sqlite3";
-import path from "path";
+import { PrismaClient } from "../src/generated/prisma/client";
 
-const dbPath = path.join(process.cwd(), "data", "artifacts.db");
-const db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+const prisma = new PrismaClient();
 
-interface ArtifactRow {
-  id: number;
-  title: string;
-  description: string;
-  code: string;
-  created_at: string;
-}
-
-const txn = db.transaction(() => {
+async function main() {
   // 1. Find artifacts with no versions
-  const missing = db
-    .prepare(
-      `SELECT a.id, a.title, a.description, a.code, a.created_at
-       FROM artifacts a
-       LEFT JOIN artifact_versions v ON v.artifact_id = a.id
-       WHERE v.id IS NULL`
-    )
-    .all() as ArtifactRow[];
+  const missing = await prisma.artifact.findMany({
+    where: { versions: { none: {} } },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      code: true,
+      createdAt: true,
+    },
+  });
 
   // 2. Insert v1 for each, set live_version = 1
-  const insertVersion = db.prepare(
-    `INSERT INTO artifact_versions (artifact_id, version_number, title, description, code, created_at)
-     VALUES (?, 1, ?, ?, ?, ?)`
-  );
-  const setLive = db.prepare(
-    `UPDATE artifacts SET live_version = 1 WHERE id = ?`
-  );
-
   for (const a of missing) {
-    insertVersion.run(a.id, a.title, a.description, a.code, a.created_at);
-    setLive.run(a.id);
+    await prisma.$transaction([
+      prisma.artifactVersion.create({
+        data: {
+          artifactId: a.id,
+          versionNumber: 1,
+          title: a.title,
+          description: a.description ?? "",
+          code: a.code,
+          createdAt: a.createdAt,
+        },
+      }),
+      prisma.artifact.update({
+        where: { id: a.id },
+        data: { liveVersion: 1 },
+      }),
+    ]);
   }
 
   // 3. Fix artifacts that have versions but live_version = 0
-  const fixedLive = db
-    .prepare(
-      `UPDATE artifacts SET live_version = 1
-       WHERE live_version = 0
-         AND id IN (SELECT DISTINCT artifact_id FROM artifact_versions)`
-    )
-    .run();
+  const fixedCount = await prisma.artifact.updateMany({
+    where: {
+      liveVersion: 0,
+      versions: { some: {} },
+    },
+    data: { liveVersion: 1 },
+  });
 
   console.log(`Created v1 for ${missing.length} artifact(s)`);
-  console.log(
-    `Fixed live_version on ${fixedLive.changes} additional artifact(s)`
-  );
-});
+  console.log(`Fixed live_version on ${fixedCount.count} additional artifact(s)`);
+}
 
-txn();
-db.close();
-console.log("Done.");
+main()
+  .then(() => prisma.$disconnect())
+  .catch((e) => {
+    console.error(e);
+    prisma.$disconnect();
+    process.exit(1);
+  });

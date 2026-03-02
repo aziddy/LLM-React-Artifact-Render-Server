@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string; version: string }> }
 ) {
   const { slug, version } = await params;
-  const artifact = getArtifactBySlug(slug);
+  const artifact = await getArtifactBySlug(slug);
 
   if (!artifact) {
     return new NextResponse("Not found", { status: 404 });
@@ -28,7 +28,7 @@ export async function GET(
     }
   }
 
-  const ver = getVersion(artifact.id, Number(version));
+  const ver = await getVersion(artifact.id, Number(version));
   if (!ver) {
     return new NextResponse("Version not found", { status: 404 });
   }

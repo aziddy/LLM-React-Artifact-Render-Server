@@ -1,4 +1,5 @@
-import { db } from "./db";
+import { prisma } from "./db";
+import type { Tag as PrismaTag } from "@/generated/prisma/client";
 
 export interface Tag {
   id: number;
@@ -33,71 +34,76 @@ export interface FlatTag {
   depth: number;
 }
 
+function toTag(p: PrismaTag): Tag {
+  return {
+    id: p.id,
+    name: p.name,
+    color: p.color,
+    parent_id: p.parentId,
+    sort_order: p.sortOrder,
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
+  };
+}
+
 // --- CRUD ---
 
-export function createTag(input: CreateTagInput): Tag {
-  const stmt = db.prepare(`
-    INSERT INTO tags (name, color, parent_id, sort_order)
-    VALUES (?, ?, ?, ?)
-  `);
-  const result = stmt.run(
-    input.name,
-    input.color ?? null,
-    input.parent_id ?? null,
-    input.sort_order ?? 0
-  );
-  return getTagById(result.lastInsertRowid as number)!;
+export async function createTag(input: CreateTagInput): Promise<Tag> {
+  const row = await prisma.tag.create({
+    data: {
+      name: input.name,
+      color: input.color ?? null,
+      parentId: input.parent_id ?? null,
+      sortOrder: input.sort_order ?? 0,
+    },
+  });
+  return toTag(row);
 }
 
-export function getTagById(id: number): Tag | undefined {
-  const stmt = db.prepare("SELECT * FROM tags WHERE id = ?");
-  return stmt.get(id) as Tag | undefined;
+export async function getTagById(id: number): Promise<Tag | undefined> {
+  const row = await prisma.tag.findUnique({ where: { id } });
+  return row ? toTag(row) : undefined;
 }
 
-export function getAllTags(): Tag[] {
-  const stmt = db.prepare(
-    "SELECT * FROM tags ORDER BY sort_order ASC, name ASC"
-  );
-  return stmt.all() as Tag[];
+export async function getAllTags(): Promise<Tag[]> {
+  const rows = await prisma.tag.findMany({
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+  return rows.map(toTag);
 }
 
-export function updateTag(id: number, input: UpdateTagInput): Tag | undefined {
-  const fields: string[] = [];
-  const params: unknown[] = [];
+export async function updateTag(
+  id: number,
+  input: UpdateTagInput
+): Promise<Tag | undefined> {
+  const data: {
+    name?: string;
+    color?: string | null;
+    parentId?: number | null;
+    sortOrder?: number;
+    updatedAt?: string;
+  } = {};
 
-  if (input.name !== undefined) {
-    fields.push("name = ?");
-    params.push(input.name);
-  }
-  if (input.color !== undefined) {
-    fields.push("color = ?");
-    params.push(input.color);
-  }
-  if (input.parent_id !== undefined) {
-    fields.push("parent_id = ?");
-    params.push(input.parent_id);
-  }
-  if (input.sort_order !== undefined) {
-    fields.push("sort_order = ?");
-    params.push(input.sort_order);
-  }
+  if (input.name !== undefined) data.name = input.name;
+  if (input.color !== undefined) data.color = input.color;
+  if (input.parent_id !== undefined) data.parentId = input.parent_id;
+  if (input.sort_order !== undefined) data.sortOrder = input.sort_order;
 
-  if (fields.length === 0) return getTagById(id);
+  if (Object.keys(data).length === 0) return getTagById(id);
 
-  fields.push("updated_at = datetime('now')");
-  params.push(id);
+  data.updatedAt = new Date().toISOString().replace("T", " ").slice(0, 19);
 
-  const stmt = db.prepare(
-    `UPDATE tags SET ${fields.join(", ")} WHERE id = ?`
-  );
-  stmt.run(...params);
-  return getTagById(id);
+  const row = await prisma.tag.update({ where: { id }, data });
+  return toTag(row);
 }
 
-export function deleteTag(id: number): boolean {
-  const stmt = db.prepare("DELETE FROM tags WHERE id = ?");
-  const result = stmt.run(id);
-  return result.changes > 0;
+export async function deleteTag(id: number): Promise<boolean> {
+  try {
+    await prisma.tag.delete({ where: { id } });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // --- Tree building ---
@@ -121,64 +127,76 @@ export function buildTagTree(flatTags: Tag[]): Tag[] {
   return roots;
 }
 
-export function getTagTree(): Tag[] {
-  return buildTagTree(getAllTags());
+export async function getTagTree(): Promise<Tag[]> {
+  return buildTagTree(await getAllTags());
 }
 
-export function getTagTreeWithCounts(): Tag[] {
-  const stmt = db.prepare(`
-    SELECT t.*, COALESCE(c.cnt, 0) as artifact_count
-    FROM tags t
-    LEFT JOIN (
-      SELECT tag_id, COUNT(*) as cnt FROM artifact_tags GROUP BY tag_id
-    ) c ON t.id = c.tag_id
-    ORDER BY t.sort_order ASC, t.name ASC
-  `);
-  const tags = stmt.all() as Tag[];
+export async function getTagTreeWithCounts(): Promise<Tag[]> {
+  const rows = await prisma.tag.findMany({
+    include: {
+      _count: { select: { artifactTags: true } },
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+
+  const tags: Tag[] = rows.map((r) => ({
+    ...toTag(r),
+    artifact_count: r._count.artifactTags,
+  }));
+
   return buildTagTree(tags);
 }
 
 // --- Artifact-tag associations ---
 
-export function getTagsForArtifact(artifactId: number): Tag[] {
-  const stmt = db.prepare(`
-    SELECT t.* FROM tags t
-    INNER JOIN artifact_tags at ON t.id = at.tag_id
-    WHERE at.artifact_id = ?
-    ORDER BY t.sort_order ASC, t.name ASC
-  `);
-  return stmt.all(artifactId) as Tag[];
-}
-
-export function setArtifactTags(artifactId: number, tagIds: number[]): void {
-  const txn = db.transaction(() => {
-    db.prepare("DELETE FROM artifact_tags WHERE artifact_id = ?").run(
-      artifactId
-    );
-    const insert = db.prepare(
-      "INSERT INTO artifact_tags (artifact_id, tag_id) VALUES (?, ?)"
-    );
-    for (const tagId of tagIds) {
-      insert.run(artifactId, tagId);
-    }
+export async function getTagsForArtifact(artifactId: number): Promise<Tag[]> {
+  const rows = await prisma.artifactTag.findMany({
+    where: { artifactId },
+    include: { tag: true },
+    orderBy: [{ tag: { sortOrder: "asc" } }, { tag: { name: "asc" } }],
   });
-  txn();
+  return rows.map((r) => toTag(r.tag));
 }
 
-export function addTagToArtifact(artifactId: number, tagId: number): void {
-  db.prepare(
-    "INSERT OR IGNORE INTO artifact_tags (artifact_id, tag_id) VALUES (?, ?)"
-  ).run(artifactId, tagId);
+export async function setArtifactTags(
+  artifactId: number,
+  tagIds: number[]
+): Promise<void> {
+  await prisma.$transaction([
+    prisma.artifactTag.deleteMany({ where: { artifactId } }),
+    ...(tagIds.length
+      ? [
+          prisma.artifactTag.createMany({
+            data: tagIds.map((tagId) => ({ artifactId, tagId })),
+          }),
+        ]
+      : []),
+  ]);
 }
 
-export function removeTagFromArtifact(
+export async function addTagToArtifact(
   artifactId: number,
   tagId: number
-): boolean {
-  const result = db
-    .prepare("DELETE FROM artifact_tags WHERE artifact_id = ? AND tag_id = ?")
-    .run(artifactId, tagId);
-  return result.changes > 0;
+): Promise<void> {
+  await prisma.artifactTag.upsert({
+    where: { artifactId_tagId: { artifactId, tagId } },
+    create: { artifactId, tagId },
+    update: {},
+  });
+}
+
+export async function removeTagFromArtifact(
+  artifactId: number,
+  tagId: number
+): Promise<boolean> {
+  try {
+    await prisma.artifactTag.delete({
+      where: { artifactId_tagId: { artifactId, tagId } },
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // --- Helpers ---
@@ -194,7 +212,10 @@ export function flattenTags(tags: Tag[], depth = 0): FlatTag[] {
   return result;
 }
 
-export function collectDescendantIds(tagId: number, allTags: Tag[]): Set<number> {
+export function collectDescendantIds(
+  tagId: number,
+  allTags: Tag[]
+): Set<number> {
   const ids = new Set<number>();
   function walk(id: number) {
     ids.add(id);

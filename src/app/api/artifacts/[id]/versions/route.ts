@@ -17,12 +17,12 @@ export async function GET(
   }
 
   const { id } = await params;
-  const artifact = getArtifactById(Number(id));
+  const artifact = await getArtifactById(Number(id));
   if (!artifact) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const versions = getVersionsForArtifact(Number(id));
+  const versions = await getVersionsForArtifact(Number(id));
   return NextResponse.json({
     live_version: artifact.live_version,
     versions,
@@ -39,7 +39,7 @@ export async function POST(
   }
 
   const { id } = await params;
-  const artifact = getArtifactById(Number(id));
+  const artifact = await getArtifactById(Number(id));
   if (!artifact) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -53,7 +53,7 @@ export async function POST(
 
     if (body.copyFrom !== undefined) {
       // Copy from an existing version
-      const source = getVersion(Number(id), Number(body.copyFrom));
+      const source = await getVersion(Number(id), Number(body.copyFrom));
       if (!source) {
         return NextResponse.json(
           { error: "Source version not found" },
@@ -81,6 +81,6 @@ export async function POST(
     code = artifact.code;
   }
 
-  const version = createVersion(Number(id), title, description, code);
+  const version = await createVersion(Number(id), title, description, code);
   return NextResponse.json(version, { status: 201 });
 }

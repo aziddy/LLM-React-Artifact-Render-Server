@@ -1,6 +1,9 @@
-import { db } from "./db";
+import { prisma } from "./db";
 import { nanoid } from "nanoid";
-import { Tag, getTagsForArtifact, setArtifactTags } from "./tags";
+import type { Tag } from "./tags";
+import { setArtifactTags } from "./tags";
+import type { Artifact as PrismaArtifact } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/prisma/client";
 
 export interface Artifact {
   id: number;
@@ -28,176 +31,215 @@ export interface CreateArtifactInput {
   tagIds?: number[];
 }
 
-export function createArtifact(input: CreateArtifactInput): Artifact {
+function toArtifact(p: PrismaArtifact): Artifact {
+  return {
+    id: p.id,
+    slug: p.slug,
+    title: p.title,
+    description: p.description ?? "",
+    code: p.code,
+    visibility: p.visibility as "public" | "private",
+    live_version: p.liveVersion,
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
+  };
+}
+
+export async function createArtifact(
+  input: CreateArtifactInput
+): Promise<Artifact> {
   const slug = nanoid(10);
   const desc = input.description || "";
-  const stmt = db.prepare(`
-    INSERT INTO artifacts (slug, title, description, code, visibility, live_version)
-    VALUES (?, ?, ?, ?, ?, 1)
-  `);
-  const result = stmt.run(
-    slug,
-    input.title,
-    desc,
-    input.code,
-    input.visibility
-  );
-  const id = result.lastInsertRowid as number;
 
-  // Create v1 and set it as live
-  db.prepare(
-    `INSERT INTO artifact_versions (artifact_id, version_number, title, description, code)
-     VALUES (?, 1, ?, ?, ?)`
-  ).run(id, input.title, desc, input.code);
+  const artifact = await prisma.$transaction(async (tx) => {
+    const created = await tx.artifact.create({
+      data: {
+        slug,
+        title: input.title,
+        description: desc,
+        code: input.code,
+        visibility: input.visibility,
+        liveVersion: 1,
+        versions: {
+          create: {
+            versionNumber: 1,
+            title: input.title,
+            description: desc,
+            code: input.code,
+          },
+        },
+      },
+    });
 
-  if (input.tagIds?.length) {
-    setArtifactTags(id, input.tagIds);
-  }
-  return getArtifactById(id)!;
+    if (input.tagIds?.length) {
+      await tx.artifactTag.createMany({
+        data: input.tagIds.map((tagId) => ({
+          artifactId: created.id,
+          tagId,
+        })),
+      });
+    }
+
+    return created;
+  });
+
+  return toArtifact(artifact);
 }
 
-export function getArtifactBySlug(slug: string): Artifact | undefined {
-  const stmt = db.prepare("SELECT * FROM artifacts WHERE slug = ?");
-  return stmt.get(slug) as Artifact | undefined;
+export async function getArtifactBySlug(
+  slug: string
+): Promise<Artifact | undefined> {
+  const row = await prisma.artifact.findUnique({ where: { slug } });
+  return row ? toArtifact(row) : undefined;
 }
 
-export function getArtifactById(id: number): Artifact | undefined {
-  const stmt = db.prepare("SELECT * FROM artifacts WHERE id = ?");
-  return stmt.get(id) as Artifact | undefined;
+export async function getArtifactById(
+  id: number
+): Promise<Artifact | undefined> {
+  const row = await prisma.artifact.findUnique({ where: { id } });
+  return row ? toArtifact(row) : undefined;
 }
 
-export function listArtifacts(opts: {
+export async function listArtifacts(opts: {
   includePrivate: boolean;
   search?: string;
-}): ArtifactListItem[] {
-  let query =
-    "SELECT id, slug, title, description, visibility, live_version, created_at, updated_at, (SELECT COUNT(*) FROM artifact_versions WHERE artifact_id = artifacts.id) as version_count FROM artifacts";
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+}): Promise<ArtifactListItem[]> {
+  const where: Prisma.ArtifactWhereInput = {};
 
   if (!opts.includePrivate) {
-    conditions.push("visibility = 'public'");
+    where.visibility = "public";
   }
 
   if (opts.search) {
-    conditions.push("(title LIKE ? OR description LIKE ?)");
-    const term = `%${opts.search}%`;
-    params.push(term, term);
+    where.OR = [
+      { title: { contains: opts.search } },
+      { description: { contains: opts.search } },
+    ];
   }
 
-  if (conditions.length > 0) {
-    query += " WHERE " + conditions.join(" AND ");
-  }
+  const rows = await prisma.artifact.findMany({
+    where,
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      description: true,
+      visibility: true,
+      liveVersion: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: { select: { versions: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
 
-  query += " ORDER BY created_at DESC";
-
-  const stmt = db.prepare(query);
-  return stmt.all(...params) as ArtifactListItem[];
+  return rows.map((r) => ({
+    id: r.id,
+    slug: r.slug,
+    title: r.title,
+    description: r.description ?? "",
+    visibility: r.visibility as "public" | "private",
+    live_version: r.liveVersion,
+    created_at: r.createdAt,
+    updated_at: r.updatedAt,
+    version_count: r._count.versions,
+  }));
 }
 
-export function updateArtifact(
+export async function updateArtifact(
   id: number,
   input: Partial<CreateArtifactInput> & { tagIds?: number[] }
-): Artifact | undefined {
-  const fields: string[] = [];
-  const params: unknown[] = [];
+): Promise<Artifact | undefined> {
+  const data: Prisma.ArtifactUpdateInput = {};
 
-  if (input.title !== undefined) {
-    fields.push("title = ?");
-    params.push(input.title);
-  }
-  if (input.description !== undefined) {
-    fields.push("description = ?");
-    params.push(input.description);
-  }
-  if (input.code !== undefined) {
-    fields.push("code = ?");
-    params.push(input.code);
-  }
-  if (input.visibility !== undefined) {
-    fields.push("visibility = ?");
-    params.push(input.visibility);
-  }
+  if (input.title !== undefined) data.title = input.title;
+  if (input.description !== undefined) data.description = input.description;
+  if (input.code !== undefined) data.code = input.code;
+  if (input.visibility !== undefined) data.visibility = input.visibility;
 
   if (input.tagIds !== undefined) {
-    setArtifactTags(id, input.tagIds);
+    await setArtifactTags(id, input.tagIds);
   }
 
-  if (fields.length === 0) return getArtifactById(id);
+  if (Object.keys(data).length === 0) return getArtifactById(id);
 
-  fields.push("updated_at = datetime('now')");
-  params.push(id);
+  data.updatedAt = new Date().toISOString().replace("T", " ").slice(0, 19);
 
-  const stmt = db.prepare(
-    `UPDATE artifacts SET ${fields.join(", ")} WHERE id = ?`
-  );
-  stmt.run(...params);
-  return getArtifactById(id);
+  const row = await prisma.artifact.update({ where: { id }, data });
+  return toArtifact(row);
 }
 
-export function deleteArtifact(id: number): boolean {
-  const stmt = db.prepare("DELETE FROM artifacts WHERE id = ?");
-  const result = stmt.run(id);
-  return result.changes > 0;
+export async function deleteArtifact(id: number): Promise<boolean> {
+  try {
+    await prisma.artifact.delete({ where: { id } });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export function listArtifactsWithTags(opts: {
+export async function listArtifactsWithTags(opts: {
   includePrivate: boolean;
   search?: string;
   tagId?: number;
-}): ArtifactListItemWithTags[] {
-  let query =
-    "SELECT a.id, a.slug, a.title, a.description, a.visibility, a.live_version, a.created_at, a.updated_at, (SELECT COUNT(*) FROM artifact_versions WHERE artifact_id = a.id) as version_count FROM artifacts a";
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-
-  if (opts.tagId) {
-    query += " INNER JOIN artifact_tags at ON a.id = at.artifact_id";
-    conditions.push("at.tag_id = ?");
-    params.push(opts.tagId);
-  }
+}): Promise<ArtifactListItemWithTags[]> {
+  const where: Prisma.ArtifactWhereInput = {};
 
   if (!opts.includePrivate) {
-    conditions.push("a.visibility = 'public'");
+    where.visibility = "public";
   }
 
   if (opts.search) {
-    conditions.push("(a.title LIKE ? OR a.description LIKE ?)");
-    const term = `%${opts.search}%`;
-    params.push(term, term);
+    where.OR = [
+      { title: { contains: opts.search } },
+      { description: { contains: opts.search } },
+    ];
   }
 
-  if (conditions.length > 0) {
-    query += " WHERE " + conditions.join(" AND ");
+  if (opts.tagId) {
+    where.artifactTags = { some: { tagId: opts.tagId } };
   }
 
-  query += " ORDER BY a.created_at DESC";
+  const rows = await prisma.artifact.findMany({
+    where,
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      description: true,
+      visibility: true,
+      liveVersion: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: { select: { versions: true } },
+      artifactTags: {
+        select: {
+          tag: true,
+        },
+        orderBy: [{ tag: { sortOrder: "asc" } }, { tag: { name: "asc" } }],
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
 
-  const artifacts = db.prepare(query).all(...params) as ArtifactListItem[];
-
-  if (artifacts.length === 0) return [];
-
-  // Batch-load tags for all artifacts in one query
-  const ids = artifacts.map((a) => a.id);
-  const placeholders = ids.map(() => "?").join(",");
-  const tagRows = db
-    .prepare(
-      `SELECT at.artifact_id, t.* FROM artifact_tags at
-       INNER JOIN tags t ON at.tag_id = t.id
-       WHERE at.artifact_id IN (${placeholders})
-       ORDER BY t.sort_order ASC, t.name ASC`
-    )
-    .all(...ids) as (Tag & { artifact_id: number })[];
-
-  const tagMap = new Map<number, Tag[]>();
-  for (const row of tagRows) {
-    const { artifact_id, ...tag } = row;
-    if (!tagMap.has(artifact_id)) tagMap.set(artifact_id, []);
-    tagMap.get(artifact_id)!.push(tag);
-  }
-
-  return artifacts.map((a) => ({
-    ...a,
-    tags: tagMap.get(a.id) || [],
+  return rows.map((r) => ({
+    id: r.id,
+    slug: r.slug,
+    title: r.title,
+    description: r.description ?? "",
+    visibility: r.visibility as "public" | "private",
+    live_version: r.liveVersion,
+    created_at: r.createdAt,
+    updated_at: r.updatedAt,
+    version_count: r._count.versions,
+    tags: r.artifactTags.map((at) => ({
+      id: at.tag.id,
+      name: at.tag.name,
+      color: at.tag.color,
+      parent_id: at.tag.parentId,
+      sort_order: at.tag.sortOrder,
+      created_at: at.tag.createdAt,
+      updated_at: at.tag.updatedAt,
+    })),
   }));
 }

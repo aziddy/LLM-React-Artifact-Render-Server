@@ -10,7 +10,7 @@ export default async function ArtifactPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const artifact = getArtifactBySlug(slug);
+  const artifact = await getArtifactBySlug(slug);
 
   if (!artifact) {
     notFound();
@@ -22,6 +22,6 @@ export default async function ArtifactPage({
     notFound();
   }
 
-  const tags = getTagsForArtifact(artifact.id);
+  const tags = await getTagsForArtifact(artifact.id);
   return <ArtifactView artifact={{ ...artifact, tags }} isLoggedIn={authed} />;
 }

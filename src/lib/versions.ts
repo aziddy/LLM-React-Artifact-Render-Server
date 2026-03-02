@@ -1,4 +1,5 @@
-import { db } from "./db";
+import { prisma } from "./db";
+import type { ArtifactVersion as PrismaVersion } from "@/generated/prisma/client";
 
 export interface ArtifactVersion {
   id: number;
@@ -12,130 +13,157 @@ export interface ArtifactVersion {
 
 export type ArtifactVersionListItem = Omit<ArtifactVersion, "code">;
 
-export function getVersionsForArtifact(
-  artifactId: number
-): ArtifactVersionListItem[] {
-  const stmt = db.prepare(
-    `SELECT id, artifact_id, version_number, title, description, created_at
-     FROM artifact_versions WHERE artifact_id = ? ORDER BY version_number DESC`
-  );
-  return stmt.all(artifactId) as ArtifactVersionListItem[];
+function toVersion(p: PrismaVersion): ArtifactVersion {
+  return {
+    id: p.id,
+    artifact_id: p.artifactId,
+    version_number: p.versionNumber,
+    title: p.title,
+    description: p.description ?? "",
+    code: p.code,
+    created_at: p.createdAt,
+  };
 }
 
-export function getVersion(
+function toVersionListItem(p: {
+  id: number;
+  artifactId: number;
+  versionNumber: number;
+  title: string;
+  description: string | null;
+  createdAt: string;
+}): ArtifactVersionListItem {
+  return {
+    id: p.id,
+    artifact_id: p.artifactId,
+    version_number: p.versionNumber,
+    title: p.title,
+    description: p.description ?? "",
+    created_at: p.createdAt,
+  };
+}
+
+export async function getVersionsForArtifact(
+  artifactId: number
+): Promise<ArtifactVersionListItem[]> {
+  const rows = await prisma.artifactVersion.findMany({
+    where: { artifactId },
+    select: {
+      id: true,
+      artifactId: true,
+      versionNumber: true,
+      title: true,
+      description: true,
+      createdAt: true,
+    },
+    orderBy: { versionNumber: "desc" },
+  });
+  return rows.map(toVersionListItem);
+}
+
+export async function getVersion(
   artifactId: number,
   versionNumber: number
-): ArtifactVersion | undefined {
-  const stmt = db.prepare(
-    `SELECT * FROM artifact_versions WHERE artifact_id = ? AND version_number = ?`
-  );
-  return stmt.get(artifactId, versionNumber) as ArtifactVersion | undefined;
+): Promise<ArtifactVersion | undefined> {
+  const row = await prisma.artifactVersion.findUnique({
+    where: { artifactId_versionNumber: { artifactId, versionNumber } },
+  });
+  return row ? toVersion(row) : undefined;
 }
 
-export function getVersionById(id: number): ArtifactVersion | undefined {
-  const stmt = db.prepare("SELECT * FROM artifact_versions WHERE id = ?");
-  return stmt.get(id) as ArtifactVersion | undefined;
+export async function getVersionById(
+  id: number
+): Promise<ArtifactVersion | undefined> {
+  const row = await prisma.artifactVersion.findUnique({ where: { id } });
+  return row ? toVersion(row) : undefined;
 }
 
-export function createVersion(
+export async function createVersion(
   artifactId: number,
   title: string,
   description: string,
   code: string
-): ArtifactVersion {
-  const maxRow = db
-    .prepare(
-      "SELECT COALESCE(MAX(version_number), 0) as max_v FROM artifact_versions WHERE artifact_id = ?"
-    )
-    .get(artifactId) as { max_v: number };
+): Promise<ArtifactVersion> {
+  const maxResult = await prisma.artifactVersion.aggregate({
+    where: { artifactId },
+    _max: { versionNumber: true },
+  });
+  const nextVersion = (maxResult._max.versionNumber ?? 0) + 1;
 
-  const nextVersion = maxRow.max_v + 1;
-
-  const stmt = db.prepare(
-    `INSERT INTO artifact_versions (artifact_id, version_number, title, description, code)
-     VALUES (?, ?, ?, ?, ?)`
-  );
-  const result = stmt.run(artifactId, nextVersion, title, description, code);
-  return getVersionById(result.lastInsertRowid as number)!;
+  const row = await prisma.artifactVersion.create({
+    data: { artifactId, versionNumber: nextVersion, title, description, code },
+  });
+  return toVersion(row);
 }
 
-export function updateVersion(
+export async function updateVersion(
   artifactId: number,
   versionNumber: number,
   input: { title?: string; description?: string; code?: string }
-): ArtifactVersion | undefined {
-  const version = getVersion(artifactId, versionNumber);
+): Promise<ArtifactVersion | undefined> {
+  const version = await prisma.artifactVersion.findUnique({
+    where: { artifactId_versionNumber: { artifactId, versionNumber } },
+  });
   if (!version) return undefined;
 
-  const fields: string[] = [];
-  const params: unknown[] = [];
+  const data: { title?: string; description?: string; code?: string } = {};
+  if (input.title !== undefined) data.title = input.title;
+  if (input.description !== undefined) data.description = input.description;
+  if (input.code !== undefined) data.code = input.code;
 
-  if (input.title !== undefined) {
-    fields.push("title = ?");
-    params.push(input.title);
-  }
-  if (input.description !== undefined) {
-    fields.push("description = ?");
-    params.push(input.description);
-  }
-  if (input.code !== undefined) {
-    fields.push("code = ?");
-    params.push(input.code);
-  }
+  if (Object.keys(data).length === 0) return toVersion(version);
 
-  if (fields.length === 0) return version;
-
-  params.push(artifactId, versionNumber);
-
-  const txn = db.transaction(() => {
-    db.prepare(
-      `UPDATE artifact_versions SET ${fields.join(", ")} WHERE artifact_id = ? AND version_number = ?`
-    ).run(...params);
+  const updated = await prisma.$transaction(async (tx) => {
+    const ver = await tx.artifactVersion.update({
+      where: { artifactId_versionNumber: { artifactId, versionNumber } },
+      data,
+    });
 
     // Auto-sync to artifacts table if this is the live version
-    const artifact = db
-      .prepare("SELECT live_version FROM artifacts WHERE id = ?")
-      .get(artifactId) as { live_version: number } | undefined;
+    const artifact = await tx.artifact.findUnique({
+      where: { id: artifactId },
+      select: { liveVersion: true },
+    });
 
-    if (artifact && artifact.live_version === versionNumber) {
-      const updated = db
-        .prepare(
-          "SELECT * FROM artifact_versions WHERE artifact_id = ? AND version_number = ?"
-        )
-        .get(artifactId, versionNumber) as ArtifactVersion;
-
-      db.prepare(
-        `UPDATE artifacts
-         SET title = ?, description = ?, code = ?, updated_at = datetime('now')
-         WHERE id = ?`
-      ).run(updated.title, updated.description, updated.code, artifactId);
+    if (artifact && artifact.liveVersion === versionNumber) {
+      const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+      await tx.artifact.update({
+        where: { id: artifactId },
+        data: {
+          title: ver.title,
+          description: ver.description,
+          code: ver.code,
+          updatedAt: now,
+        },
+      });
     }
-  });
-  txn();
 
-  return getVersion(artifactId, versionNumber);
+    return ver;
+  });
+
+  return toVersion(updated);
 }
 
-export function setLiveVersion(
+export async function setLiveVersion(
   artifactId: number,
   versionNumber: number
-): boolean {
-  const version = getVersion(artifactId, versionNumber);
+): Promise<boolean> {
+  const version = await prisma.artifactVersion.findUnique({
+    where: { artifactId_versionNumber: { artifactId, versionNumber } },
+  });
   if (!version) return false;
 
-  const txn = db.transaction(() => {
-    db.prepare(
-      `UPDATE artifacts
-       SET title = ?, description = ?, code = ?, live_version = ?, updated_at = datetime('now')
-       WHERE id = ?`
-    ).run(
-      version.title,
-      version.description,
-      version.code,
-      versionNumber,
-      artifactId
-    );
+  const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+  await prisma.artifact.update({
+    where: { id: artifactId },
+    data: {
+      title: version.title,
+      description: version.description,
+      code: version.code,
+      liveVersion: versionNumber,
+      updatedAt: now,
+    },
   });
-  txn();
+
   return true;
 }

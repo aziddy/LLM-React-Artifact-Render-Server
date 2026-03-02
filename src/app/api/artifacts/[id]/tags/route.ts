@@ -19,7 +19,7 @@ export async function POST(
   const { id } = await params;
   const artifactId = Number(id);
 
-  const artifact = getArtifactById(artifactId);
+  const artifact = await getArtifactById(artifactId);
   if (!artifact) {
     return NextResponse.json({ error: "Artifact not found" }, { status: 404 });
   }
@@ -35,12 +35,12 @@ export async function POST(
       );
     }
 
-    const tag = getTagById(Number(tagId));
+    const tag = await getTagById(Number(tagId));
     if (!tag) {
       return NextResponse.json({ error: "Tag not found" }, { status: 404 });
     }
 
-    addTagToArtifact(artifactId, Number(tagId));
+    await addTagToArtifact(artifactId, Number(tagId));
     return NextResponse.json(
       { artifact_id: artifactId, tag_id: Number(tagId) },
       { status: 201 }
@@ -76,7 +76,7 @@ export async function DELETE(
       );
     }
 
-    removeTagFromArtifact(artifactId, Number(tagId));
+    await removeTagFromArtifact(artifactId, Number(tagId));
     return new NextResponse(null, { status: 204 });
   } catch {
     return NextResponse.json(

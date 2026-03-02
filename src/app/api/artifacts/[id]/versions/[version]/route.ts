@@ -13,7 +13,7 @@ export async function GET(
   }
 
   const { id, version } = await params;
-  const ver = getVersion(Number(id), Number(version));
+  const ver = await getVersion(Number(id), Number(version));
   if (!ver) {
     return NextResponse.json({ error: "Version not found" }, { status: 404 });
   }
@@ -36,7 +36,7 @@ export async function PUT(
     const body = await request.json();
     const { title, description, code } = body;
 
-    const updated = updateVersion(Number(id), Number(version), {
+    const updated = await updateVersion(Number(id), Number(version), {
       title,
       description,
       code,
@@ -68,11 +68,11 @@ export async function POST(
   }
 
   const { id, version } = await params;
-  const success = setLiveVersion(Number(id), Number(version));
+  const success = await setLiveVersion(Number(id), Number(version));
   if (!success) {
     return NextResponse.json({ error: "Version not found" }, { status: 404 });
   }
 
-  const updated = getArtifactById(Number(id));
+  const updated = await getArtifactById(Number(id));
   return NextResponse.json(updated);
 }

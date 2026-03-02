@@ -8,7 +8,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const tree = getTagTreeWithCounts();
+  const tree = await getTagTreeWithCounts();
   return NextResponse.json(tree);
 }
 
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (parent_id !== undefined && parent_id !== null) {
-      const parent = getTagById(Number(parent_id));
+      const parent = await getTagById(Number(parent_id));
       if (!parent) {
         return NextResponse.json(
           { error: "Parent tag not found" },
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const tag = createTag({
+    const tag = await createTag({
       name: name.trim(),
       color: color || null,
       parent_id: parent_id != null ? Number(parent_id) : null,

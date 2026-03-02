@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const tagParam = request.nextUrl.searchParams.get("tag");
   const tagId = tagParam ? Number(tagParam) : undefined;
 
-  const artifacts = listArtifactsWithTags({
+  const artifacts = await listArtifactsWithTags({
     includePrivate: authed,
     search,
     tagId,
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const artifact = createArtifact({
+    const artifact = await createArtifact({
       title,
       description: description || "",
       code,

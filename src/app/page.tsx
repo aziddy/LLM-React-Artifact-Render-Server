@@ -15,13 +15,13 @@ export default async function DashboardPage({
   const { search, tag } = await searchParams;
   const tagId = tag ? Number(tag) : undefined;
 
-  const artifacts = listArtifactsWithTags({
+  const artifacts = await listArtifactsWithTags({
     includePrivate: true,
     search,
     tagId,
   });
 
-  const allTags = getTagTreeWithCounts();
+  const allTags = await getTagTreeWithCounts();
 
   return (
     <div className="min-h-screen">

@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Artifact {
+  id          Int      @id @default(autoincrement())
+  slug        String   @unique(map: "sqlite_autoindex_artifacts_1")
+  title       String
+  description String?  @default("")
+  code        String
+  visibility  String   @default("private")
+  createdAt   String   @default("datetime('now')") @map("created_at")
+  updatedAt   String   @default("datetime('now')") @map("updated_at")
+  liveVersion Int      @default(0) @map("live_version")
+
+  artifactTags ArtifactTag[]
+  versions     ArtifactVersion[]
+
+  @@index([createdAt(sort: Desc)], map: "idx_artifacts_created_at")
+  @@index([visibility], map: "idx_artifacts_visibility")
+  @@index([slug], map: "idx_artifacts_slug")
+  @@map("artifacts")
+}
+
+model Tag {
+  id        Int     @id @default(autoincrement())
+  name      String
+  color     String?
+  parentId  Int?    @map("parent_id")
+  sortOrder Int     @default(0) @map("sort_order")
+  createdAt String  @default("datetime('now')") @map("created_at")
+  updatedAt String  @default("datetime('now')") @map("updated_at")
+
+  artifactTags ArtifactTag[]
+  parent       Tag?           @relation("TagHierarchy", fields: [parentId], references: [id], onUpdate: NoAction)
+  children     Tag[]          @relation("TagHierarchy")
+
+  @@index([sortOrder], map: "idx_tags_sort_order")
+  @@index([parentId], map: "idx_tags_parent_id")
+  @@map("tags")
+}
+
+model ArtifactTag {
+  artifactId Int @map("artifact_id")
+  tagId      Int @map("tag_id")
+
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  artifact Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([artifactId, tagId])
+  @@index([tagId], map: "idx_artifact_tags_tag_id")
+  @@map("artifact_tags")
+}
+
+model ArtifactVersion {
+  id            Int     @id @default(autoincrement())
+  artifactId    Int     @map("artifact_id")
+  versionNumber Int     @map("version_number")
+  title         String
+  description   String? @default("")
+  code          String
+  createdAt     String  @default("datetime('now')") @map("created_at")
+
+  artifact Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([artifactId, versionNumber], map: "sqlite_autoindex_artifact_versions_1")
+  @@index([artifactId, versionNumber], map: "idx_artifact_versions_lookup")
+  @@index([artifactId], map: "idx_artifact_versions_artifact_id")
+  @@map("artifact_versions")
+}

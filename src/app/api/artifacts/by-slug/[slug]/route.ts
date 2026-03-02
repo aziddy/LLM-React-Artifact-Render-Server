@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const artifact = getArtifactBySlug(slug);
+  const artifact = await getArtifactBySlug(slug);
 
   if (!artifact) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -21,6 +21,6 @@ export async function GET(
     }
   }
 
-  const tags = getTagsForArtifact(artifact.id);
+  const tags = await getTagsForArtifact(artifact.id);
   return NextResponse.json({ ...artifact, tags });
 }

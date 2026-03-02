@@ -12,7 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const artifact = getArtifactById(Number(id));
+  const artifact = await getArtifactById(Number(id));
 
   if (!artifact) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -25,7 +25,7 @@ export async function GET(
     }
   }
 
-  const tags = getTagsForArtifact(Number(id));
+  const tags = await getTagsForArtifact(Number(id));
   return NextResponse.json({ ...artifact, tags });
 }
 
@@ -39,7 +39,7 @@ export async function PUT(
   }
 
   const { id } = await params;
-  const existing = getArtifactById(Number(id));
+  const existing = await getArtifactById(Number(id));
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -55,7 +55,7 @@ export async function PUT(
       );
     }
 
-    const updated = updateArtifact(Number(id), {
+    const updated = await updateArtifact(Number(id), {
       title,
       description,
       code,
@@ -82,7 +82,7 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const deleted = deleteArtifact(Number(id));
+  const deleted = await deleteArtifact(Number(id));
 
   if (!deleted) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });

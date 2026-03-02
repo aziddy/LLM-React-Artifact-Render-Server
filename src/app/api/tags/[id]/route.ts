@@ -8,7 +8,7 @@ import {
   collectDescendantIds,
   getTagsForArtifact,
 } from "@/lib/tags";
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/db";
 
 export async function GET(
   _request: NextRequest,
@@ -20,35 +20,55 @@ export async function GET(
   }
 
   const { id } = await params;
-  const tag = getTagById(Number(id));
+  const tag = await getTagById(Number(id));
 
   if (!tag) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   // Get children
-  const children = db
-    .prepare(
-      "SELECT * FROM tags WHERE parent_id = ? ORDER BY sort_order ASC, name ASC"
-    )
-    .all(Number(id));
+  const childRows = await prisma.tag.findMany({
+    where: { parentId: Number(id) },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+  const children = childRows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    color: c.color,
+    parent_id: c.parentId,
+    sort_order: c.sortOrder,
+    created_at: c.createdAt,
+    updated_at: c.updatedAt,
+  }));
 
   // Get artifacts assigned to this tag
-  const artifacts = db
-    .prepare(
-      `SELECT a.id, a.slug, a.title, a.description, a.visibility, a.created_at, a.updated_at
-       FROM artifacts a
-       INNER JOIN artifact_tags at ON a.id = at.artifact_id
-       WHERE at.tag_id = ?
-       ORDER BY a.created_at DESC`
-    )
-    .all(Number(id));
+  const artifactRows = await prisma.artifact.findMany({
+    where: { artifactTags: { some: { tagId: Number(id) } } },
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      description: true,
+      visibility: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
 
   // Attach tags to each artifact
-  const artifactsWithTags = (artifacts as { id: number }[]).map((a) => ({
-    ...a,
-    tags: getTagsForArtifact(a.id),
-  }));
+  const artifactsWithTags = await Promise.all(
+    artifactRows.map(async (a) => ({
+      id: a.id,
+      slug: a.slug,
+      title: a.title,
+      description: a.description,
+      visibility: a.visibility,
+      created_at: a.createdAt,
+      updated_at: a.updatedAt,
+      tags: await getTagsForArtifact(a.id),
+    }))
+  );
 
   return NextResponse.json({ ...tag, children, artifacts: artifactsWithTags });
 }
@@ -64,7 +84,7 @@ export async function PATCH(
 
   const { id } = await params;
   const tagId = Number(id);
-  const existing = getTagById(tagId);
+  const existing = await getTagById(tagId);
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -96,7 +116,7 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      const parent = getTagById(newParentId);
+      const parent = await getTagById(newParentId);
       if (!parent) {
         return NextResponse.json(
           { error: "Parent tag not found" },
@@ -104,7 +124,7 @@ export async function PATCH(
         );
       }
       // Check if newParentId is a descendant of this tag
-      const descendants = collectDescendantIds(tagId, getAllTags());
+      const descendants = collectDescendantIds(tagId, await getAllTags());
       if (descendants.has(newParentId)) {
         return NextResponse.json(
           { error: "Cannot set a descendant as parent (circular reference)" },
@@ -113,7 +133,7 @@ export async function PATCH(
       }
     }
 
-    const updated = updateTag(tagId, {
+    const updated = await updateTag(tagId, {
       name: name?.trim(),
       color,
       parent_id: parent_id !== undefined ? (parent_id != null ? Number(parent_id) : null) : undefined,
@@ -139,7 +159,7 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const deleted = deleteTag(Number(id));
+  const deleted = await deleteTag(Number(id));
 
   if (!deleted) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
