@@ -4,7 +4,7 @@ COPY package.json package-lock.json ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 ENV DATABASE_URL="file:./prisma/artifacts.db"
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -24,11 +24,11 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/src/generated ./src/generated
 
 RUN mkdir -p /app/prisma && chown nextjs:nodejs /app/prisma
+RUN chmod -R a-w /app
 
 USER nextjs
 EXPOSE 3000
