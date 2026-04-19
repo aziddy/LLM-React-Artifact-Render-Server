@@ -28,7 +28,7 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/src/generated ./src/generated
 
 RUN mkdir -p /app/prisma && chown nextjs:nodejs /app/prisma
-RUN chmod -R a-w /app
+RUN chmod -R a-w /app && chmod u+w /app/prisma
 
 USER nextjs
 EXPOSE 3000

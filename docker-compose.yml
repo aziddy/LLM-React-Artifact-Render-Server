@@ -10,6 +10,15 @@ services:
       - JWT_SECRET=${JWT_SECRET}
     volumes:
       - sqlite-data:/app/prisma
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /app/.next/cache:rw,noexec,nosuid,size=256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: "1001:1001"
     restart: unless-stopped
 
 volumes:

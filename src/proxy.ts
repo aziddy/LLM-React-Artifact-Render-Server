@@ -14,7 +14,7 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
   return response;
 }
 
-export async function middleware(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   // CVE-2025-29927: strip header that can bypass middleware
   request.headers.delete("x-middleware-subrequest");
 
